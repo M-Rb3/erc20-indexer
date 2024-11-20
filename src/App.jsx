@@ -8,6 +8,7 @@ import {
   Input,
   SimpleGrid,
   Text,
+  useToast,
 } from "@chakra-ui/react";
 import { Alchemy, Network, Utils } from "alchemy-sdk";
 import { useState } from "react";
@@ -21,46 +22,70 @@ function App() {
   const [results, setResults] = useState([]);
   const [hasQueried, setHasQueried] = useState(false);
   const [tokenDataObjects, setTokenDataObjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const toast = useToast();
+
   const { address: connectedAddress } = useAccount();
 
   async function getTokenBalance() {
-    const config = {
-      apiKey: "JeO4MHx99fjG52tZ2ThURpt4DiWR_zYD",
-      network: Network.ETH_MAINNET,
-    };
+    setLoading(true);
+    setError(null);
+    try {
+      const config = {
+        apiKey: "JeO4MHx99fjG52tZ2ThURpt4DiWR_zYD",
+        network: Network.ETH_MAINNET,
+      };
 
-    const alchemy = new Alchemy(config);
-    const data = await alchemy.core.getTokenBalances(connectedAddress);
+      const alchemy = new Alchemy(config);
+      const data = await alchemy.core.getTokenBalances(connectedAddress);
 
-    setResults(data);
+      setResults(data);
 
-    const tokenDataPromises = [];
-
-    for (let i = 0; i < data.tokenBalances.length; i++) {
-      const tokenData = alchemy.core.getTokenMetadata(
-        data.tokenBalances[i].contractAddress
+      const tokenDataPromises = data.tokenBalances.map((token) =>
+        alchemy.core.getTokenMetadata(token.contractAddress)
       );
-      tokenDataPromises.push(tokenData);
-    }
 
-    setTokenDataObjects(await Promise.all(tokenDataPromises));
-    setHasQueried(true);
+      setTokenDataObjects(await Promise.all(tokenDataPromises));
+      setHasQueried(true);
+    } catch (err) {
+      setError("Failed to fetch token balances");
+      toast({
+        title: "Error",
+        description: "Failed to fetch token balances",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
   }
+
   return (
     <RainbowKitProvider>
-      <Box w="100vw">
+      <Center
+        flexDirection={"column"}
+        margin={"auto"}
+        minHeight={"screen"}
+        width={"100%"}
+      >
         <ConnectButton />
         <Center>
           <Flex
             alignItems={"center"}
             justifyContent="center"
             flexDirection={"column"}
+            textAlign="center"
+            p={4}
+            borderRadius="md"
+            boxShadow="md"
           >
-            <Heading mb={0} fontSize={36}>
+            <Heading mb={4} fontSize={36}>
               ERC-20 Token Indexer
             </Heading>
-            <Text>Connected Wallet Address: {connectedAddress}</Text>
-            <Text>
+            <Text mb={2}>Connected Wallet Address: {connectedAddress}</Text>
+            <Text mb={4}>
               Plug in an address and this website will return all of its ERC-20
               token balances!
             </Text>
@@ -72,8 +97,9 @@ function App() {
             flexDirection="column"
             alignItems="center"
             justifyContent={"center"}
+            mt={8}
           >
-            <Heading mt={42}>
+            <Heading mt={8} mb={4}>
               Get all the ERC-20 token balances of this address:
             </Heading>
             <Text
@@ -83,52 +109,56 @@ function App() {
               p={4}
               bgColor="white"
               fontSize={24}
+              borderRadius="md"
+              boxShadow="md"
             >
               {connectedAddress}
             </Text>
             <Button
               fontSize={20}
               onClick={getTokenBalance}
-              mt={36}
-              bgColor="blue"
+              mt={8}
+              bgColor="blue.500"
+              color="white"
+              _hover={{ bg: "blue.600" }}
+              disabled={loading}
             >
-              Check ERC-20 Token Balances
+              {loading ? "Checking..." : "Check ERC-20 Token Balances"}
             </Button>
 
-            <Heading my={36}>ERC-20 token balances:</Heading>
-
-            {hasQueried ? (
-              <SimpleGrid w={"90vw"} columns={4} spacing={24}>
-                {results.tokenBalances.map((e, i) => {
-                  return (
-                    <Flex
-                      flexDir={"column"}
-                      color="white"
-                      bg="blue"
-                      w={"20vw"}
-                      key={e.id}
-                    >
-                      <Box>
-                        <b>Symbol:</b> ${tokenDataObjects[i].symbol}&nbsp;
-                      </Box>
-                      <Box>
-                        <b>Balance:</b>&nbsp;
-                        {Utils.formatUnits(
-                          e.tokenBalance,
-                          tokenDataObjects[i].decimals
-                        )}
-                      </Box>
-                      <Image src={tokenDataObjects[i].logo} />
-                    </Flex>
-                  );
-                })}
+            <Heading my={8}>ERC-20 token balances:</Heading>
+            {loading && <Text>Loading...</Text>}
+            {error && <Text color="red.500">{error}</Text>}
+            {hasQueried && !loading && !error && (
+              <SimpleGrid w={"90vw"} columns={[1, 2, 3, 4]} spacing={8}>
+                {results.tokenBalances.map((e, i) => (
+                  <Flex
+                    flexDir={"column"}
+                    color="white"
+                    bg="blue.500"
+                    p={4}
+                    borderRadius="md"
+                    boxShadow="md"
+                    key={e.id}
+                  >
+                    <Box>
+                      <b>Symbol:</b> {tokenDataObjects[i].symbol}
+                    </Box>
+                    <Box>
+                      <b>Balance:</b>{" "}
+                      {Utils.formatUnits(
+                        e.tokenBalance,
+                        tokenDataObjects[i].decimals
+                      )}
+                    </Box>
+                    <Image src={tokenDataObjects[i].logo} alt="Token Logo" />
+                  </Flex>
+                ))}
               </SimpleGrid>
-            ) : (
-              "Please make a query! This may take a few seconds..."
             )}
           </Flex>
         )}
-      </Box>
+      </Center>
     </RainbowKitProvider>
   );
 }
